@@ -1,51 +1,53 @@
 pipeline {
     agent any
-    
+
     parameters {
+        booleanParam(name: 'autoApprove', defaultValue: false, description: 'Automatically run apply after generating plan?')
         choice(name: 'action', choices: ['apply', 'destroy'], description: 'Select the action to perform')
     }
-    
+
     environment {
         AWS_ACCESS_KEY_ID     = credentials('AWS_ACCESS_KEY_ID')
         AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
         AWS_DEFAULT_REGION    = 'us-east-1'
-
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/vanshik0027/terraformAssignment.git'
+                git branch: 'main', url: 'https://github.com/vanshik0027/terraformAssignmentMain.git'
             }
         }
-        stage('Terraform Init') {
+        stage('Terraform init') {
             steps {
-                script {
-                    sh 'terraform init'
-                }
+                sh 'terraform init'
             }
         }
-        stage('Terraform Plan') {
+        stage('Plan') {
             steps {
-                script {
-                    sh 'terraform plan -out=tfplan'
-                }
+                sh 'terraform plan -out tfplan'
+                sh 'terraform show -no-color tfplan > tfplan.txt'
             }
         }
-        stage('Terraform Apply / Destroy') {
+        stage('Apply / Destroy') {
             steps {
                 script {
                     if (params.action == 'apply') {
+                        if (!params.autoApprove) {
+                            def plan = readFile 'tfplan.txt'
+                            input message: "Do you want to apply the plan?",
+                            parameters: [text(name: 'Plan', description: 'Please review the plan', defaultValue: plan)]
+                        }
 
-                        sh 'terraform init && terraform plan && terraform apply --auto-approve'
-
+                        sh 'terraform ${action} -input=false tfplan'
                     } else if (params.action == 'destroy') {
-                        sh 'terraform init && terraform plan && terraform destroy --auto-approve'
-                    } 
+                        sh 'terraform ${action} --auto-approve'
+                    } else {
+                        error "Invalid action selected. Please choose either 'apply' or 'destroy'."
+                    }
                 }
             }
         }
-    }
 
-    
+    }
 }
